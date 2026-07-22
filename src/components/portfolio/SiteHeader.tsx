@@ -47,7 +47,7 @@ export const SiteHeader = forwardRef<HTMLElement, SiteHeaderProps>(
             Find me
           </a>
           <span>Racking brains @ Simpletruss</span>
-          <span className="relative justify-self-end whitespace-nowrap pr-7 tabular-nums sm:pr-10">
+          <span className="relative justify-self-end whitespace-nowrap pr-10 tabular-nums">
             <KualaLumpurClock />
             <span className="absolute right-0 top-1/2 -translate-y-1/2">
               <ThemeToggle theme={theme} setTheme={setTheme} />

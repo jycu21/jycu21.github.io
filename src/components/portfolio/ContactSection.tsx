@@ -124,15 +124,15 @@ export const ContactSection = ({ scrollWrapperRef }: ContactSectionProps) => {
       ))}
 
       <div className="contact-content flex bg-[#F6FDFC] p-5 md:p-8">
-        <div className="theme-divider relative grid min-h-0 w-full flex-1 grid-cols-1 gap-16 after:hidden after:bg-[#17191A] after:content-[''] md:grid-cols-2 md:after:absolute md:after:inset-y-0 md:after:left-1/2 md:after:block md:after:w-px md:after:-translate-x-1/2">
-          <div className="flex aspect-square w-full items-center justify-center overflow-hidden md:aspect-auto md:h-full md:min-h-0">
+        <div className="contact-content-grid theme-divider relative grid min-h-0 w-full flex-1 grid-cols-1 gap-16 after:hidden after:bg-[#17191A] after:content-[''] md:grid-cols-2 md:after:absolute md:after:inset-y-0 md:after:left-1/2 md:after:block md:after:w-px md:after:-translate-x-1/2">
+          <div className="contact-media-slot">
             <video
               autoPlay
               loop
               muted
               playsInline
               aria-label="Animated artwork"
-              className="theme-natural-media h-full w-full object-cover md:scale-100"
+              className="theme-natural-media"
             >
               <source src="/TDMovieOut.0.mp4" type="video/mp4" />
             </video>
