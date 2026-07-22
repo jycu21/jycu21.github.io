@@ -16,8 +16,7 @@
 }
 
 .site-viewport[data-theme="dark"] img,
-.site-viewport[data-theme="dark"] video,
-.site-viewport[data-theme="dark"] iframe {
+.site-viewport[data-theme="dark"] video {
   filter: invert(1) hue-rotate(180deg);
 }
 
@@ -43,8 +42,17 @@
   background-color: #3a281c;
 }
 
-.site-viewport[data-theme="dark"] .theme-accent > :first-child {
-  border-color: rgb(255 255 255 / 38%);
+.site-viewport[data-theme="dark"] .theme-border,
+.site-viewport[data-theme="dark"] .theme-divide > :not(:last-child) {
+  border-color: #d1d5db;
+}
+
+.site-viewport[data-theme="dark"] .theme-divider::after {
+  background-color: #d1d5db;
+}
+
+.site-viewport[data-theme="dark"] .theme-accent .theme-border {
+  border-color: #272b31;
 }
 
 html[data-theme="dark"],
@@ -77,6 +85,10 @@ html[data-theme-transitioning="true"]::view-transition-new(root) {
   backface-visibility: hidden;
   transform: translateZ(0);
   will-change: clip-path;
+}
+
+html[data-theme-transitioning="true"]::view-transition-image-pair(theme-icon) {
+  display: none;
 }
 
 @keyframes theme-circle-reveal {
@@ -161,27 +173,73 @@ html[data-theme-transitioning="true"]::view-transition-new(root) {
 .theme-toggle {
   position: relative;
   display: inline-flex;
+  flex: 0 0 2rem;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-end;
+  width: 2rem;
+  height: 2rem;
   padding: 0;
   border: 0;
   background: transparent;
   color: currentColor;
-  font-family: "Source Serif 4", "Times New Roman", serif;
-  font-size: 1.45em;
-  line-height: 0.7;
   cursor: pointer;
 }
 
-.theme-toggle::after {
-  position: absolute;
-  inset: -0.55rem;
-  content: "";
+.theme-toggle-icon-shell {
+  position: relative;
+  top: -1px;
+  display: block;
+  flex: 0 0 1.25rem;
+  width: 1.25rem;
+  height: 1.25rem;
+  view-transition-name: theme-icon;
+}
+
+.theme-toggle-icon {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  transform: rotate(0deg);
+  transform-origin: center;
+  will-change: transform;
+}
+
+.site-viewport[data-theme="dark"] .theme-toggle-icon {
+  transform: translateY(-0.75px) rotate(-8deg);
+}
+
+.theme-toggle-icon-line {
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.theme-toggle-icon-core {
+  stroke-linecap: round;
+}
+
+.theme-toggle-icon-ray {
+  stroke-linecap: butt;
+}
+
+.theme-icon-morph-overlay {
+  position: fixed;
+  inset: auto;
+  width: 1.25rem;
+  height: 1.25rem;
+  margin: 0;
+  padding: 0;
+  overflow: visible;
+  border: 0;
+  background: transparent;
+  pointer-events: none;
 }
 
 .theme-toggle:focus-visible {
   outline: 1px solid currentColor;
-  outline-offset: 0.35rem;
+  outline-offset: 0.15rem;
 }
 
 .font-instrument-serif {

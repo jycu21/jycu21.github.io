@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { flushSync } from "react-dom";
+import { createPortal, flushSync } from "react-dom";
 import { gsap } from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import Lenis from "lenis";
@@ -37,6 +37,7 @@ type FontClass = (typeof FONT_CLASSES)[number];
 type Theme = "light" | "dark";
 type IntroItem =
   | { kind: "character"; character: string; font: FontClass }
+  | { kind: "code"; characters: string; font: FontClass }
   | { kind: "coffee" };
 type IntroOperation =
   | { kind: "character"; character: string }
@@ -45,6 +46,33 @@ type IntroOperation =
   | { kind: "code"; character: string };
 type IntroPhrase = { label: string; operations: IntroOperation[] };
 type DisplayedIntro = { label: string; items: IntroItem[] };
+
+const MOON_CORE_PATH =
+  "M16.7 1.2 C9.8 2.5 6.2 9 8.6 15.4 C11 21.8 18 23.8 23.25 19.5 C17.2 19.6 12.4 15.2 12.4 9.6 C12.4 6.4 13.9 3.4 16.7 1.2 Z";
+const SUN_CORE_PATH =
+  "M12 7 C9.239 7 7 9.239 7 12 C7 14.761 9.239 17 12 17 C14.761 17 17 14.761 17 12 C17 9.239 14.761 7 12 7 Z";
+const MOON_CORE_STROKE_WIDTH = 1.2;
+const SUN_CORE_STROKE_WIDTH = 1.5;
+const MOON_RAY_PATHS = [
+  "M16.8 3.2 Q16.8 3.2 16.8 3.2",
+  "M13 5.5 Q13 5.5 13 5.5",
+  "M10.2 9 Q10.2 9 10.2 9",
+  "M9.3 13 Q9.3 13 9.3 13",
+  "M11.2 17.7 Q11.2 17.7 11.2 17.7",
+  "M15 20.5 Q15 20.5 15 20.5",
+  "M19.2 20.4 Q19.2 20.4 19.2 20.4",
+  "M22.8 18.8 Q22.8 18.8 22.8 18.8",
+] as const;
+const SUN_RAY_PATHS = [
+  "M12 0.75 Q12 2.375 12 4",
+  "M19.955 4.045 Q18.807 5.193 17.66 6.34",
+  "M23.25 12 Q21.625 12 20 12",
+  "M19.955 19.955 Q18.807 18.807 17.66 17.66",
+  "M12 23.25 Q12 21.625 12 20",
+  "M4.045 19.955 Q5.193 18.807 6.34 17.66",
+  "M0.75 12 Q2.375 12 4 12",
+  "M4.045 4.045 Q5.193 5.193 6.34 6.34",
+] as const;
 
 const characterOperations = (text: string): IntroOperation[] =>
   Array.from(text, (character) => ({ kind: "character", character }));
@@ -86,10 +114,17 @@ const renderIntro = (
     }
 
     if (operation.kind === "braces") {
-      items.push(
-        { kind: "character", character: "{", font },
-        { kind: "character", character: "}", font }
+      items.push({ kind: "code", characters: "", font });
+      return;
+    }
+
+    if (operation.kind === "code") {
+      const codeItem = items.find(
+        (item): item is Extract<IntroItem, { kind: "code" }> =>
+          item.kind === "code"
       );
+
+      if (codeItem) codeItem.characters += operation.character;
       return;
     }
 
@@ -99,11 +134,7 @@ const renderIntro = (
       font,
     };
 
-    if (operation.kind === "code") {
-      items.splice(items.length - 1, 0, item);
-    } else {
-      items.push(item);
-    }
+    items.push(item);
   });
 
   return items;
@@ -127,6 +158,23 @@ const initialTheme = (): Theme => {
   }
 };
 
+const ExternalArrow = ({ className = "" }: { className?: string }) => (
+  <svg
+    aria-hidden="true"
+    viewBox="0 0 16 16"
+    fill="none"
+    className={`h-[0.9em] w-[0.9em] shrink-0 ${className}`}
+  >
+    <path
+      d="M4 12 12 4M6 4h6v6"
+      stroke="currentColor"
+      strokeWidth="1.25"
+      strokeLinecap="square"
+      strokeLinejoin="miter"
+    />
+  </svg>
+);
+
 const InfoCard: React.FC<InfoCardProps> = ({
   title,
   number,
@@ -138,7 +186,7 @@ const InfoCard: React.FC<InfoCardProps> = ({
     <div
       className={`theme-accent flex h-full flex-col p-6 md:p-8 ${bgColor} ${textColor}`}
     >
-      <div className="mb-4 flex items-center justify-between border-b border-[#17191A] pb-4">
+      <div className="theme-border mb-4 flex items-center justify-between border-b border-[#17191A] pb-4">
         <h3 className="text-xs md:text-sm uppercase tracking-wider flex items-center gap-2">
           <span className="inline-block w-2 h-2 bg-current rounded-full"></span>
           {title}
@@ -161,10 +209,19 @@ const Portfolio = () => {
   const projectSnapRef = useRef<HTMLSpanElement>(null);
   const scrollWrapperRef = useRef<HTMLDivElement>(null);
   const scrollContentRef = useRef<HTMLDivElement>(null);
+  const themeIconShellRef = useRef<HTMLSpanElement>(null);
+  const themeIconRef = useRef<SVGSVGElement>(null);
+  const themeIconCoreRef = useRef<SVGPathElement>(null);
+  const themeIconRayRefs = useRef<Array<SVGPathElement | null>>([]);
+  const themeIconOverlayRef = useRef<HTMLSpanElement>(null);
+  const themeIconOverlaySvgRef = useRef<SVGSVGElement>(null);
+  const themeIconOverlayCoreRef = useRef<SVGPathElement>(null);
+  const themeIconOverlayRayRefs = useRef<Array<SVGPathElement | null>>([]);
   const themeTransitioningRef = useRef(false);
   const [headerHeight, setHeaderHeight] = useState<number>(0);
   const [time, setTime] = useState<Date>(new Date());
   const [theme, setTheme] = useState<Theme>(initialTheme);
+  const initialIconThemeRef = useRef(theme);
   const [selectedProject, setSelectedProject] = useState(0);
   const [displayedIntro, setDisplayedIntro] = useState<DisplayedIntro>(() => ({
     label: INTRO_PHRASES[0].label,
@@ -417,28 +474,75 @@ const Portfolio = () => {
       duration: 0.45,
       ease: "power3.out",
     });
+    let isPointerInside = false;
+    const positionAtPointer = ({ clientX, clientY }: PointerEvent): void => {
+      const { left, top } = portrait.getBoundingClientRect();
+      gsap.set(cursor, { x: clientX - left, y: clientY - top });
+    };
     const move = ({ clientX, clientY }: PointerEvent): void => {
       const { left, top } = portrait.getBoundingClientRect();
       moveX(clientX - left);
       moveY(clientY - top);
     };
-    const enter = (): void => {
-      gsap.to(cursor, { scale: 1, duration: 0.35, ease: "power3.out" });
+    const enter = (event: PointerEvent): void => {
+      isPointerInside = true;
+      gsap.killTweensOf(cursor, "autoAlpha,scale");
+      positionAtPointer(event);
+      gsap.to(cursor, {
+        autoAlpha: 1,
+        scale: 1,
+        duration: 0.35,
+        ease: "power3.out",
+        overwrite: true,
+      });
     };
     const leave = (): void => {
-      gsap.to(cursor, { scale: 0, duration: 0.25, ease: "power3.in" });
+      isPointerInside = false;
+      gsap.killTweensOf(cursor, "autoAlpha,scale");
+      gsap.to(cursor, {
+        autoAlpha: 0,
+        scale: 0,
+        duration: 0.35,
+        ease: "power3.in",
+        overwrite: true,
+      });
+    };
+    const detectFastExit = ({ clientX, clientY }: PointerEvent): void => {
+      if (!isPointerInside) return;
+
+      const { left, right, top, bottom } = portrait.getBoundingClientRect();
+      if (
+        clientX < left ||
+        clientX > right ||
+        clientY < top ||
+        clientY > bottom
+      ) {
+        leave();
+      }
     };
 
-    gsap.set(cursor, { xPercent: -50, yPercent: -50, scale: 0 });
+    gsap.set(cursor, {
+      xPercent: -50,
+      yPercent: -50,
+      autoAlpha: 0,
+      scale: 0,
+    });
     portrait.addEventListener("pointermove", move);
     portrait.addEventListener("pointerenter", enter);
     portrait.addEventListener("pointerleave", leave);
+    portrait.addEventListener("pointercancel", leave);
+    window.addEventListener("pointermove", detectFastExit, { passive: true });
+    window.addEventListener("blur", leave);
 
     return () => {
       portrait.removeEventListener("pointermove", move);
       portrait.removeEventListener("pointerenter", enter);
       portrait.removeEventListener("pointerleave", leave);
+      portrait.removeEventListener("pointercancel", leave);
+      window.removeEventListener("pointermove", detectFastExit);
+      window.removeEventListener("blur", leave);
       gsap.killTweensOf(cursor);
+      gsap.set(cursor, { autoAlpha: 0, scale: 0 });
     };
   }, []);
 
@@ -456,6 +560,17 @@ const Portfolio = () => {
     if (themeTransitioningRef.current) return;
 
     const nextTheme: Theme = theme === "light" ? "dark" : "light";
+    const themeIcon = themeIconRef.current;
+    const themeIconCore = themeIconCoreRef.current;
+    const themeIconRays = themeIconRayRefs.current.filter(
+      (ray): ray is SVGPathElement => ray !== null
+    );
+    const themeIconOverlay = themeIconOverlayRef.current;
+    const themeIconOverlaySvg = themeIconOverlaySvgRef.current;
+    const themeIconOverlayCore = themeIconOverlayCoreRef.current;
+    const themeIconOverlayRays = themeIconOverlayRayRefs.current.filter(
+      (ray): ray is SVGPathElement => ray !== null
+    );
     const { left, top, width, height } =
       event.currentTarget.getBoundingClientRect();
     const pointerActivation = event.detail > 0;
@@ -477,32 +592,213 @@ const Portfolio = () => {
       "(prefers-reduced-motion: reduce)"
     ).matches;
 
-    if (
-      prefersReducedMotion ||
-      typeof document.startViewTransition !== "function"
-    ) {
-      applyTheme();
-      return;
-    }
+    const targetCorePath =
+      nextTheme === "dark" ? MOON_CORE_PATH : SUN_CORE_PATH;
+    const targetRayPaths =
+      nextTheme === "dark" ? MOON_RAY_PATHS : SUN_RAY_PATHS;
+    const targetRotation = nextTheme === "dark" ? -8 : 0;
+    const targetY = nextTheme === "dark" ? -0.75 : 0;
+    const targetCoreStrokeWidth =
+      nextTheme === "dark"
+        ? MOON_CORE_STROKE_WIDTH
+        : SUN_CORE_STROKE_WIDTH;
 
-    const root = document.documentElement;
+    const updateIconGeometry = (
+      icon: SVGSVGElement,
+      core: SVGPathElement,
+      rays: SVGPathElement[]
+    ): void => {
+      core.setAttribute("d", targetCorePath);
+      rays.forEach((ray, index) => {
+        ray.setAttribute("d", targetRayPaths[index]);
+      });
+      gsap.set(core, { strokeWidth: targetCoreStrokeWidth });
+      gsap.set(icon, { rotation: targetRotation, y: targetY });
+    };
+
+    const revealTheme = (): Promise<void> => {
+      if (
+        prefersReducedMotion ||
+        typeof document.startViewTransition !== "function"
+      ) {
+        applyTheme();
+        return Promise.resolve();
+      }
+
+      const root = document.documentElement;
+
+      root.dataset.themeTransitioning = "true";
+      root.style.setProperty("--theme-reveal-x", `${originXPercent}%`);
+      root.style.setProperty("--theme-reveal-y", `${originYPercent}%`);
+
+      const transition = document.startViewTransition(applyTheme);
+
+      return transition.finished
+        .then(() => undefined)
+        .finally(() => {
+          delete root.dataset.themeTransitioning;
+          root.style.removeProperty("--theme-reveal-x");
+          root.style.removeProperty("--theme-reveal-y");
+        });
+    };
 
     themeTransitioningRef.current = true;
-    root.dataset.themeTransitioning = "true";
-    root.style.setProperty("--theme-reveal-x", `${originXPercent}%`);
-    root.style.setProperty("--theme-reveal-y", `${originYPercent}%`);
 
-    const transition = document.startViewTransition(applyTheme);
+    let morphIconElement = themeIcon;
+    let morphIconCore = themeIconCore;
+    let morphIconRays = themeIconRays;
+    let overlayIsOpen = false;
 
-    transition.finished.finally(() => {
+    if (
+      themeIconOverlay &&
+      themeIconOverlaySvg &&
+      themeIconOverlayCore &&
+      themeIconOverlayRays.length === SUN_RAY_PATHS.length &&
+      themeIconShellRef.current &&
+      typeof themeIconOverlay.showPopover === "function"
+    ) {
+      const shellBounds = themeIconShellRef.current.getBoundingClientRect();
+
+      themeIconOverlay.style.left = `${shellBounds.left}px`;
+      themeIconOverlay.style.top = `${shellBounds.top}px`;
+      themeIconOverlay.style.color =
+        nextTheme === "dark" ? "#d2d2d2" : "#2d2d2d";
+
+      try {
+        themeIconOverlay.showPopover();
+        overlayIsOpen = true;
+        morphIconElement = themeIconOverlaySvg;
+        morphIconCore = themeIconOverlayCore;
+        morphIconRays = themeIconOverlayRays;
+      } catch {
+        // The in-place SVG remains the fallback when popovers are unavailable.
+      }
+    }
+
+    if (
+      overlayIsOpen &&
+      themeIcon &&
+      themeIconCore &&
+      themeIconRays.length === SUN_RAY_PATHS.length
+    ) {
+      updateIconGeometry(themeIcon, themeIconCore, themeIconRays);
+    }
+
+    const morphIcon = (): Promise<void> => {
+      if (
+        !morphIconElement ||
+        !morphIconCore ||
+        morphIconRays.length !== SUN_RAY_PATHS.length
+      ) {
+        return Promise.resolve();
+      }
+
+      gsap.killTweensOf([
+        morphIconElement,
+        morphIconCore,
+        ...morphIconRays,
+      ]);
+
+      if (prefersReducedMotion) {
+        updateIconGeometry(
+          morphIconElement,
+          morphIconCore,
+          morphIconRays
+        );
+        return Promise.resolve();
+      }
+
+      return new Promise((resolve) => {
+        const timeline = gsap.timeline({ onComplete: resolve });
+
+        if (nextTheme === "dark") {
+          timeline
+            .to(
+              morphIconRays,
+              {
+                attr: {
+                  d: (index: number) => targetRayPaths[index],
+                },
+                duration: 0.18,
+                ease: "power2.in",
+                stagger: { each: 0.004, from: "end" },
+              },
+              0
+            )
+            .to(
+              morphIconCore,
+              {
+                attr: { d: targetCorePath },
+                strokeWidth: targetCoreStrokeWidth,
+                duration: 0.32,
+                ease: "power2.inOut",
+              },
+              0.16
+            )
+            .to(
+              morphIconElement,
+              {
+                rotation: targetRotation,
+                y: targetY,
+                duration: 0.32,
+                ease: "power2.inOut",
+              },
+              0.16
+            );
+        } else {
+          timeline
+            .to(
+              morphIconCore,
+              {
+                attr: { d: targetCorePath },
+                strokeWidth: targetCoreStrokeWidth,
+                duration: 0.3,
+                ease: "power2.inOut",
+              },
+              0
+            )
+            .to(
+              morphIconElement,
+              {
+                rotation: targetRotation,
+                y: targetY,
+                duration: 0.3,
+                ease: "power2.inOut",
+              },
+              0
+            )
+            .to(
+              morphIconRays,
+              {
+                attr: {
+                  d: (index: number) => targetRayPaths[index],
+                },
+                duration: 0.22,
+                ease: "power2.out",
+                stagger: { each: 0.004, from: "start" },
+              },
+              0.26
+            );
+        }
+      });
+    };
+
+    const iconMorph = morphIcon();
+    const themeReveal = revealTheme();
+
+    void Promise.allSettled([iconMorph, themeReveal]).then(() => {
+      if (
+        overlayIsOpen &&
+        themeIconOverlay?.matches(":popover-open")
+      ) {
+        themeIconOverlay.hidePopover();
+      }
       themeTransitioningRef.current = false;
-      delete root.dataset.themeTransitioning;
-      root.style.removeProperty("--theme-reveal-x");
-      root.style.removeProperty("--theme-reveal-y");
     });
   };
 
   return (
+    <>
     <div
       data-theme={theme}
       className="site-viewport font-site bg-[#F6FDFC] text-[#2D2D2D]"
@@ -515,7 +811,7 @@ const Portfolio = () => {
         <div className="font-header-mono grid grid-cols-2 gap-x-4 gap-y-3 px-5 py-5 text-[9px] uppercase leading-none tracking-[0.08em] sm:px-8 sm:py-6 sm:text-xs lg:text-base">
           <span>Frontend Developer</span>
           <a
-            href="mailto:hello@example.com"
+            href="mailto:jy99.my@gmail.com"
             className="justify-self-end hover:underline"
           >
             Find me
@@ -530,7 +826,48 @@ const Portfolio = () => {
               aria-label={`Switch to ${theme === "light" ? "dark" : "light"} mode`}
               title={`Switch to ${theme === "light" ? "dark" : "light"} mode`}
             >
-              <span aria-hidden="true">{theme === "light" ? "☾" : "☼"}</span>
+              <span
+                ref={themeIconShellRef}
+                className="theme-toggle-icon-shell"
+                aria-hidden="true"
+              >
+                <svg
+                  ref={themeIconRef}
+                  className="theme-toggle-icon"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  focusable="false"
+                >
+                  <path
+                    ref={themeIconCoreRef}
+                    d={
+                      initialIconThemeRef.current === "light"
+                        ? SUN_CORE_PATH
+                        : MOON_CORE_PATH
+                    }
+                    className="theme-toggle-icon-line theme-toggle-icon-core"
+                    style={{
+                      strokeWidth:
+                        initialIconThemeRef.current === "light"
+                          ? SUN_CORE_STROKE_WIDTH
+                          : MOON_CORE_STROKE_WIDTH,
+                    }}
+                  />
+                  {(initialIconThemeRef.current === "light"
+                    ? SUN_RAY_PATHS
+                    : MOON_RAY_PATHS
+                  ).map((path, index) => (
+                    <path
+                      key={index}
+                      ref={(node) => {
+                        themeIconRayRefs.current[index] = node;
+                      }}
+                      d={path}
+                      className="theme-toggle-icon-line theme-toggle-icon-ray"
+                    />
+                  ))}
+                </svg>
+              </span>
             </button>
           </span>
         </div>
@@ -555,37 +892,36 @@ const Portfolio = () => {
             aria-label={displayedIntro.label}
             className="typewriter-line flex h-full w-full items-center text-[clamp(3rem,8vw,9rem)] font-normal leading-[0.92] tracking-[-0.055em]"
           >
-            {displayedIntro.items.length > 0 && (
-              <span aria-hidden="true" className="block w-full">
-                {displayedIntro.items.map((item, index) => {
-                  const isClosingBrace =
-                    item.kind === "character" && item.character === "}";
-
-                  return (
-                    <React.Fragment key={index}>
-                      {isClosingBrace && <span className="typewriter-cursor" />}
-                      {item.kind === "coffee" ? (
-                        <span className="typewriter-coffee">
-                          <img src="/coffee.png" alt="" />
-                        </span>
-                      ) : (
-                        <span className={item.font}>{item.character}</span>
-                      )}
-                    </React.Fragment>
-                  );
-                })}
-                {!displayedIntro.items.some(
-                  (item) =>
-                    item.kind === "character" && item.character === "}"
-                ) && <span className="typewriter-cursor" />}
-              </span>
-            )}
+            <span aria-hidden="true" className="block w-full">
+              {displayedIntro.items.map((item, index) => {
+                return (
+                  <React.Fragment key={index}>
+                    {item.kind === "coffee" ? (
+                      <span className="typewriter-coffee">
+                        <img src="/coffee.png" alt="" />
+                      </span>
+                    ) : item.kind === "code" ? (
+                      <span className="inline-block whitespace-nowrap">
+                        <span className={item.font}>{`{${item.characters}`}</span>
+                        <span className="typewriter-cursor" />
+                        <span className={item.font}>{"}"}</span>
+                      </span>
+                    ) : (
+                      <span className={item.font}>{item.character}</span>
+                    )}
+                  </React.Fragment>
+                );
+              })}
+              {!displayedIntro.items.some((item) => item.kind === "code") && (
+                <span className="typewriter-cursor" />
+              )}
+            </span>
           </h1>
         </section>
 
         {/* About Section */}
         <div className="min-h-[40vh] md:h-[40vh]">
-          <div className="grid h-full flex-initial grid-cols-1 divide-y divide-[#17191A] border border-[#17191A] md:grid-cols-3 md:divide-x md:divide-y-0">
+          <div className="theme-border theme-divide grid h-full flex-initial grid-cols-1 divide-y divide-[#17191A] border border-[#17191A] md:grid-cols-3 md:divide-x md:divide-y-0">
             <div className="">
               <InfoCard
                 title="About"
@@ -613,7 +949,7 @@ const Portfolio = () => {
               <div
                 ref={contactCursorRef}
                 aria-hidden="true"
-                className="pointer-events-none absolute left-0 top-0 z-10 hidden h-40 w-40 rounded-full bg-white mix-blend-difference will-change-transform md:block"
+                className="pointer-events-none invisible absolute left-0 top-0 z-10 hidden h-40 w-40 scale-0 rounded-full bg-white opacity-0 mix-blend-difference will-change-transform md:block"
               />
             </div>
 
@@ -635,14 +971,14 @@ const Portfolio = () => {
         {/* Projects Section */}
         <section
           aria-labelledby="projects-heading"
-          className="projects-viewport relative z-10 grid border-b border-[#17191A] bg-[#F6FDFC] md:grid-cols-2"
+          className="theme-border projects-viewport relative z-10 grid border-b border-[#17191A] bg-[#F6FDFC] md:grid-cols-2"
         >
           <span
             ref={projectSnapRef}
             aria-hidden="true"
             className="pointer-events-none absolute inset-x-0 top-[calc(var(--header-height)*-1)] h-px"
           />
-          <div className="relative flex min-h-[55vh] flex-col justify-between p-8 md:min-h-0 md:border-r md:border-[#17191A]">
+          <div className="theme-border relative flex min-h-[55vh] flex-col justify-between p-8 md:min-h-0 md:border-r md:border-[#17191A]">
             <div>
               <h2
                 id="projects-heading"
@@ -657,7 +993,10 @@ const Portfolio = () => {
 
             <ol className="md:absolute md:inset-x-8 md:top-1/2">
               {PROJECTS.map((project, index) => (
-                <li key={project.title} className="border-b border-[#17191A]">
+                <li
+                  key={project.title}
+                  className="theme-border border-b border-[#17191A]"
+                >
                   <button
                     type="button"
                     aria-pressed={selectedProject === index}
@@ -683,21 +1022,13 @@ const Portfolio = () => {
           </div>
 
           <div className="relative min-h-[50vh] overflow-hidden bg-[#E5E7EB] md:min-h-0">
-            <iframe
-              key={PROJECTS[selectedProject].url}
-              src={PROJECTS[selectedProject].url}
-              title={`${PROJECTS[selectedProject].title} live preview`}
-              className="pointer-events-none h-full min-h-[50vh] w-full border-0 bg-white"
-              loading="lazy"
-              referrerPolicy="strict-origin-when-cross-origin"
-            />
             <a
               href={PROJECTS[selectedProject].url}
               target="_blank"
               rel="noreferrer"
-              className="absolute bottom-5 right-5 bg-[#F6FDFC] px-4 py-2 text-sm uppercase"
+              className="absolute bottom-5 right-5 flex items-center gap-2 bg-[#F6FDFC] px-4 py-2 text-sm uppercase"
             >
-              Open live site ↗
+              Open live site <ExternalArrow />
             </a>
           </div>
         </section>
@@ -716,7 +1047,7 @@ const Portfolio = () => {
               aria-hidden="true"
               className={`contact-stack-panel overflow-hidden bg-[#F6FDFC] px-8 ${
                 index === CONTACT_STACK_HEIGHTS.length - 1
-                  ? "sticky top-[var(--header-height)] z-10 border-b border-[#17191A]"
+                  ? "theme-border sticky top-[var(--header-height)] z-10 border-b border-[#17191A]"
                   : ""
               }`}
               style={{ height: `${height}vw` }}
@@ -748,7 +1079,7 @@ const Portfolio = () => {
           ))}
 
           <div className="contact-content flex bg-[#F6FDFC] p-5 md:p-8">
-            <div className="relative grid min-h-0 w-full flex-1 grid-cols-1 gap-16 after:hidden after:bg-[#17191A] after:content-[''] md:grid-cols-2 md:after:absolute md:after:inset-y-0 md:after:left-1/2 md:after:block md:after:w-px md:after:-translate-x-1/2">
+            <div className="theme-divider relative grid min-h-0 w-full flex-1 grid-cols-1 gap-16 after:hidden after:bg-[#17191A] after:content-[''] md:grid-cols-2 md:after:absolute md:after:inset-y-0 md:after:left-1/2 md:after:block md:after:w-px md:after:-translate-x-1/2">
               <div className="hidden h-full min-h-0 items-center justify-center md:flex">
                 <video
                   autoPlay
@@ -763,7 +1094,7 @@ const Portfolio = () => {
               </div>
 
               <div className="self-start">
-                <div className="grid grid-cols-2 border-b border-[#17191A] pb-2 text-[0.65rem] uppercase">
+                <div className="theme-border grid grid-cols-2 border-b border-[#17191A] pb-2 text-[0.65rem] uppercase">
                   <span>Links:</span>
                   <span>Selected places</span>
                 </div>
@@ -772,22 +1103,18 @@ const Portfolio = () => {
                     (label) => (
                       <li
                         key={label}
-                        className="group relative overflow-hidden border-b border-[#17191A] text-[clamp(1.5rem,2.35vw,3rem)] font-semibold uppercase leading-none"
+                        className="theme-border group relative overflow-hidden border-b border-[#17191A] text-[clamp(1.5rem,2.35vw,3rem)] font-semibold uppercase leading-none"
                       >
                         <span className="flex items-center justify-between py-1">
                           {label}
-                          <span aria-hidden="true" className="mr-[6px] text-base font-normal">
-                            ↗
-                          </span>
+                          <ExternalArrow className="mr-[6px] text-base" />
                         </span>
                         <span
                           aria-hidden="true"
                           className="absolute inset-0 flex items-center justify-between bg-[#17191A] py-1 text-[#F6FDFC] [clip-path:inset(0_100%_0_0)] transition-[clip-path] duration-500 ease-[cubic-bezier(.22,1,.36,1)] group-hover:[clip-path:inset(0_0_0_0)]"
                         >
                           {label}
-                          <span className="mr-[6px] text-base font-normal">
-                            ↗
-                          </span>
+                          <ExternalArrow className="mr-[6px] text-base" />
                         </span>
                       </li>
                     )
@@ -801,7 +1128,7 @@ const Portfolio = () => {
         {/* Footer */}
         <footer
           ref={footerRef}
-          className="min-h-14 border-t border-[#D1D5DB] bg-[#F6FDFC] px-5 py-4 text-sm sm:h-14 sm:px-8 sm:py-0 sm:text-[18px]"
+          className="theme-border min-h-14 border-t border-[#D1D5DB] bg-[#F6FDFC] px-5 py-4 text-sm sm:h-14 sm:px-8 sm:py-0 sm:text-[18px]"
         >
           <div className="flex h-full flex-col justify-center gap-1 sm:flex-row sm:items-center sm:justify-between">
             <span>© 2024 Jun Yu Choo</span>
@@ -811,6 +1138,53 @@ const Portfolio = () => {
         </div>
       </div>
     </div>
+      {createPortal(
+        <span
+          ref={themeIconOverlayRef}
+          className="theme-icon-morph-overlay"
+          popover="manual"
+          aria-hidden="true"
+        >
+          <svg
+            ref={themeIconOverlaySvgRef}
+            className="theme-toggle-icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            focusable="false"
+          >
+            <path
+              ref={themeIconOverlayCoreRef}
+              d={
+                initialIconThemeRef.current === "light"
+                  ? SUN_CORE_PATH
+                  : MOON_CORE_PATH
+              }
+              className="theme-toggle-icon-line theme-toggle-icon-core"
+              style={{
+                strokeWidth:
+                  initialIconThemeRef.current === "light"
+                    ? SUN_CORE_STROKE_WIDTH
+                    : MOON_CORE_STROKE_WIDTH,
+              }}
+            />
+            {(initialIconThemeRef.current === "light"
+              ? SUN_RAY_PATHS
+              : MOON_RAY_PATHS
+            ).map((path, index) => (
+              <path
+                key={index}
+                ref={(node) => {
+                  themeIconOverlayRayRefs.current[index] = node;
+                }}
+                d={path}
+                className="theme-toggle-icon-line theme-toggle-icon-ray"
+              />
+            ))}
+          </svg>
+        </span>,
+        document.body
+      )}
+    </>
   );
 };
 
