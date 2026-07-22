@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { gsap } from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import Lenis from "lenis";
@@ -10,7 +11,6 @@ import { type InfoCardProps } from "./interface";
 // Register ScrollTrigger plugin
 gsap.registerPlugin(ScrollTrigger);
 
-const FULL_NAME = "Jun Yu Choo";
 const FONT_CLASSES = [
   "font-serif",
   "font-sans",
@@ -34,27 +34,98 @@ const PROJECTS = [
 ] as const;
 
 type FontClass = (typeof FONT_CLASSES)[number];
-type NameCharacter = { character: string; font: FontClass };
+type Theme = "light" | "dark";
+type IntroItem =
+  | { kind: "character"; character: string; font: FontClass }
+  | { kind: "coffee" };
+type IntroOperation =
+  | { kind: "character"; character: string }
+  | { kind: "coffee" }
+  | { kind: "braces" }
+  | { kind: "code"; character: string };
+type IntroPhrase = { label: string; operations: IntroOperation[] };
+type DisplayedIntro = { label: string; items: IntroItem[] };
 
-const fontForCycle = (
-  cycle: number,
-  random: () => number = Math.random
-): FontClass =>
-  FONT_CLASSES[cycle] ??
-  FONT_CLASSES[Math.floor(random() * FONT_CLASSES.length)] ??
-  FONT_CLASSES[0];
+const characterOperations = (text: string): IntroOperation[] =>
+  Array.from(text, (character) => ({ kind: "character", character }));
 
-const nameInFont = (font: FontClass): NameCharacter[] =>
-  Array.from(FULL_NAME, (character) => ({ character, font }));
+const INTRO_PHRASES: IntroPhrase[] = [
+  {
+    label: "Espresso coffee yourself in {CODE}",
+    operations: [
+      ...characterOperations("Espresso "),
+      { kind: "coffee" },
+      ...characterOperations(" yourself in "),
+      { kind: "braces" },
+      ...Array.from(
+        "CODE",
+        (character) => ({ kind: "code", character } as const)
+      ),
+    ],
+  },
+  {
+    label: "Coffee. Code. Create.",
+    operations: [
+      { kind: "coffee" },
+      ...characterOperations(". Code. Create."),
+    ],
+  },
+];
 
-if (import.meta.env.DEV) {
-  console.assert(
-    FONT_CLASSES.every((font, index) => fontForCycle(index) === font) &&
-      fontForCycle(FONT_CLASSES.length, () => 0) === FONT_CLASSES[0] &&
-      fontForCycle(FONT_CLASSES.length, () => 0.99) === FONT_CLASSES.at(-1),
-    "Typewriter should cycle fonts before randomizing them"
-  );
-}
+const renderIntro = (
+  phrase: IntroPhrase,
+  progress: number,
+  font: FontClass
+): IntroItem[] => {
+  const items: IntroItem[] = [];
+
+  phrase.operations.slice(0, progress).forEach((operation) => {
+    if (operation.kind === "coffee") {
+      items.push({ kind: "coffee" });
+      return;
+    }
+
+    if (operation.kind === "braces") {
+      items.push(
+        { kind: "character", character: "{", font },
+        { kind: "character", character: "}", font }
+      );
+      return;
+    }
+
+    const item: IntroItem = {
+      kind: "character",
+      character: operation.character,
+      font,
+    };
+
+    if (operation.kind === "code") {
+      items.splice(items.length - 1, 0, item);
+    } else {
+      items.push(item);
+    }
+  });
+
+  return items;
+};
+
+const randomFontAfter = (current: FontClass): FontClass => {
+  const choices = FONT_CLASSES.filter((font) => font !== current);
+  return choices[Math.floor(Math.random() * choices.length)] ?? FONT_CLASSES[0];
+};
+
+const isSpaceOperation = (operation: IntroOperation | undefined): boolean =>
+  operation?.kind === "character" && operation.character === " ";
+
+const initialTheme = (): Theme => {
+  try {
+    return window.localStorage.getItem("portfolio-theme") === "dark"
+      ? "dark"
+      : "light";
+  } catch {
+    return "light";
+  }
+};
 
 const InfoCard: React.FC<InfoCardProps> = ({
   title,
@@ -65,7 +136,7 @@ const InfoCard: React.FC<InfoCardProps> = ({
 }) => {
   return (
     <div
-      className={`flex h-full flex-col p-6 md:p-8 ${bgColor} ${textColor}`}
+      className={`theme-accent flex h-full flex-col p-6 md:p-8 ${bgColor} ${textColor}`}
     >
       <div className="mb-4 flex items-center justify-between border-b border-[#17191A] pb-4">
         <h3 className="text-xs md:text-sm uppercase tracking-wider flex items-center gap-2">
@@ -83,18 +154,26 @@ const InfoCard: React.FC<InfoCardProps> = ({
 
 const Portfolio = () => {
   const headerRef = useRef<HTMLHeadElement>(null);
+  const footerRef = useRef<HTMLElement>(null);
   const contactRef = useRef<HTMLElement>(null);
   const portraitRef = useRef<HTMLDivElement>(null);
   const contactCursorRef = useRef<HTMLDivElement>(null);
   const projectSnapRef = useRef<HTMLSpanElement>(null);
   const scrollWrapperRef = useRef<HTMLDivElement>(null);
   const scrollContentRef = useRef<HTMLDivElement>(null);
+  const themeTransitioningRef = useRef(false);
   const [headerHeight, setHeaderHeight] = useState<number>(0);
   const [time, setTime] = useState<Date>(new Date());
+  const [theme, setTheme] = useState<Theme>(initialTheme);
   const [selectedProject, setSelectedProject] = useState(0);
-  const [displayedName, setDisplayedName] = useState<NameCharacter[]>(() =>
-    nameInFont(FONT_CLASSES[0])
-  );
+  const [displayedIntro, setDisplayedIntro] = useState<DisplayedIntro>(() => ({
+    label: INTRO_PHRASES[0].label,
+    items: renderIntro(
+      INTRO_PHRASES[0],
+      INTRO_PHRASES[0].operations.length,
+      FONT_CLASSES[0]
+    ),
+  }));
 
   // Dynamically measure header height
   useEffect(() => {
@@ -125,6 +204,31 @@ const Portfolio = () => {
     return () => {
       resizeObserver.disconnect();
       window.removeEventListener("resize", measureHeader);
+    };
+  }, []);
+
+  useEffect(() => {
+    const footer = footerRef.current;
+    if (!footer) return;
+
+    const measureFooter = (): void => {
+      const height = footer.getBoundingClientRect().height;
+      document.documentElement.style.setProperty(
+        "--footer-height",
+        `${height}px`
+      );
+    };
+
+    measureFooter();
+
+    const resizeObserver = new ResizeObserver(measureFooter);
+    resizeObserver.observe(footer);
+    window.addEventListener("resize", measureFooter);
+
+    return () => {
+      resizeObserver.disconnect();
+      window.removeEventListener("resize", measureFooter);
+      document.documentElement.style.removeProperty("--footer-height");
     };
   }, []);
 
@@ -168,11 +272,22 @@ const Portfolio = () => {
   }, []);
 
   useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+
+    try {
+      window.localStorage.setItem("portfolio-theme", theme);
+    } catch {
+      // The theme still works when storage is unavailable.
+    }
+  }, [theme]);
+
+  useEffect(() => {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
 
     let timer = 0;
-    let current = nameInFont(FONT_CLASSES[0]);
-    let cycle = 1;
+    let phraseIndex = 0;
+    let progress = INTRO_PHRASES[0].operations.length;
+    let font: FontClass = FONT_CLASSES[0];
 
     const schedule = (
       callback: () => void,
@@ -186,33 +301,38 @@ const Portfolio = () => {
     };
 
     const step = (deleting: boolean): void => {
-      current = deleting
-        ? current.slice(0, -1)
-        : [
-            ...current,
-            {
-              character: FULL_NAME[current.length]!,
-              font: fontForCycle(cycle),
-            },
-          ];
-      setDisplayedName(current);
+      const phrase = INTRO_PHRASES[phraseIndex];
+      progress += deleting ? -1 : 1;
+      setDisplayedIntro({
+        label: phrase.label,
+        items: renderIntro(phrase, progress, font),
+      });
 
-      if (deleting && current.length) {
-        const pause = current.at(-1)?.character === " " ? 125 : 0;
-        schedule(() => step(true), 75 + pause, 175 + pause);
+      if (deleting && progress > 0) {
+        const pause = isSpaceOperation(phrase.operations[progress - 1])
+          ? 70
+          : 0;
+        schedule(() => step(true), 35 + pause, 90 + pause);
       } else if (deleting) {
-        schedule(() => step(false), 4000);
-      } else if (current.length < FULL_NAME.length) {
-        const wordPause = current.at(-1)?.character === " " ? 250 : 0;
+        phraseIndex = (phraseIndex + 1) % INTRO_PHRASES.length;
+        font = randomFontAfter(font);
+        setDisplayedIntro({
+          label: INTRO_PHRASES[phraseIndex].label,
+          items: [],
+        });
+        schedule(() => step(false), 1800);
+      } else if (progress < phrase.operations.length) {
+        const wordPause = isSpaceOperation(phrase.operations[progress - 1])
+          ? 100
+          : 0;
         const hesitation =
-          Math.random() < 0.35 ? 250 + Math.random() * 750 : 0;
+          Math.random() < 0.15 ? 100 + Math.random() * 300 : 0;
         schedule(
           () => step(false),
-          70 + wordPause + hesitation,
-          210 + wordPause + hesitation
+          35 + wordPause + hesitation,
+          90 + wordPause + hesitation
         );
       } else {
-        cycle += 1;
         schedule(() => step(true), 4000);
       }
     };
@@ -223,31 +343,63 @@ const Portfolio = () => {
   }, []);
 
   useEffect(() => {
+    const marks = contactRef.current
+      ? Array.from(
+          contactRef.current.querySelectorAll<SVGSVGElement>(
+            ".contact-stack-mark"
+          )
+        )
+      : [];
     const context = gsap.context(() => {
-      gsap.utils
-        .toArray<SVGSVGElement>(".contact-stack-mark")
-        .forEach((mark) => {
-          gsap.fromTo(
-            mark,
-            { yPercent: 0 },
-            {
-              yPercent: 100,
-              ease: "none",
-              scrollTrigger: {
-                trigger: mark.parentElement,
-                scroller: scrollWrapperRef.current,
-                start: "top center",
-                end: "bottom top",
-                scrub: true,
-                invalidateOnRefresh: true,
-              },
-            }
+      marks.forEach((mark) => {
+        const updateVisibility = (progress: number): void => {
+          const panelHeight = mark.parentElement?.clientHeight ?? 0;
+          const markHeight = mark.clientHeight;
+
+          if (!panelHeight || !markHeight) return;
+
+          // Fade the word before its final clipped pixels become visible.
+          const fadeEnd = Math.min(panelHeight / markHeight, 1);
+          const fadeStart = fadeEnd * 0.55;
+          const fadeProgress = Math.max(
+            0,
+            Math.min(1, (progress - fadeStart) / (fadeEnd - fadeStart))
           );
-        });
+          const opacity = 1 - fadeProgress;
+
+          mark.style.opacity = `${opacity}`;
+          mark.style.visibility = opacity <= 0.001 ? "hidden" : "visible";
+        };
+
+        gsap.fromTo(
+          mark,
+          { yPercent: 0 },
+          {
+            yPercent: 100,
+            ease: "none",
+            scrollTrigger: {
+              trigger: mark.parentElement,
+              scroller: scrollWrapperRef.current,
+              start: "top center",
+              end: "bottom top",
+              scrub: true,
+              invalidateOnRefresh: true,
+              onUpdate: ({ progress }) => updateVisibility(progress),
+              onRefresh: ({ progress }) => updateVisibility(progress),
+            },
+          }
+        );
+      });
     }, contactRef);
 
     ScrollTrigger.refresh();
-    return () => context.revert();
+    return () => {
+      context.revert();
+      marks.forEach((mark) => {
+        mark.style.removeProperty("opacity");
+        mark.style.removeProperty("visibility");
+      });
+    };
   }, []);
 
   useEffect(() => {
@@ -300,24 +452,86 @@ const Portfolio = () => {
     });
   };
 
+  const toggleTheme = (event: React.MouseEvent<HTMLButtonElement>): void => {
+    if (themeTransitioningRef.current) return;
+
+    const nextTheme: Theme = theme === "light" ? "dark" : "light";
+    const { left, top, width, height } =
+      event.currentTarget.getBoundingClientRect();
+    const pointerActivation = event.detail > 0;
+    const originX = pointerActivation ? event.clientX : left + width / 2;
+    const originY = pointerActivation ? event.clientY : top + height / 2;
+    const originXPercent = Math.min(
+      100,
+      Math.max(0, (originX / window.innerWidth) * 100)
+    );
+    const originYPercent = Math.min(
+      100,
+      Math.max(0, (originY / window.innerHeight) * 100)
+    );
+    const applyTheme = (): void => {
+      document.documentElement.dataset.theme = nextTheme;
+      flushSync(() => setTheme(nextTheme));
+    };
+    const prefersReducedMotion = window.matchMedia(
+      "(prefers-reduced-motion: reduce)"
+    ).matches;
+
+    if (
+      prefersReducedMotion ||
+      typeof document.startViewTransition !== "function"
+    ) {
+      applyTheme();
+      return;
+    }
+
+    const root = document.documentElement;
+
+    themeTransitioningRef.current = true;
+    root.dataset.themeTransitioning = "true";
+    root.style.setProperty("--theme-reveal-x", `${originXPercent}%`);
+    root.style.setProperty("--theme-reveal-y", `${originYPercent}%`);
+
+    const transition = document.startViewTransition(applyTheme);
+
+    transition.finished.finally(() => {
+      themeTransitioningRef.current = false;
+      delete root.dataset.themeTransitioning;
+      root.style.removeProperty("--theme-reveal-x");
+      root.style.removeProperty("--theme-reveal-y");
+    });
+  };
+
   return (
-    <div className="font-site h-screen bg-[#F6FDFC] text-[#2D2D2D]">
+    <div
+      data-theme={theme}
+      className="site-viewport font-site bg-[#F6FDFC] text-[#2D2D2D]"
+    >
       {/* Fixed Header */}
       <header
         ref={headerRef}
-        className="fixed top-0 left-0 right-0 z-50 bg-[#F6FDFC]/95 backdrop-blur-sm"
+        className="fixed top-0 left-0 right-0 z-50 bg-[#F6FDFC]"
       >
-        <div className="flex items-center justify-between px-8 py-6 text-[10px] uppercase text-xs sm:text-xs lg:text-base font-bold">
-          <span className="hidden sm:block">Frontend Developer</span>
-          <span className="">Racking brains @ Simpletruss</span>
+        <div className="font-header-mono grid grid-cols-2 gap-x-4 gap-y-3 px-5 py-5 text-[9px] uppercase leading-none tracking-[0.08em] sm:px-8 sm:py-6 sm:text-xs lg:text-base">
+          <span>Frontend Developer</span>
           <a
             href="mailto:hello@example.com"
-            className="hidden md:block hover:underline"
+            className="justify-self-end hover:underline"
           >
-            Email
+            Find me
           </a>
-          <span className="whitespace-nowrap tabular-nums">
-            Kuala Lumpur {formatTime(time)}
+          <span>Racking brains @ Simpletruss</span>
+          <span className="flex items-center justify-self-end gap-2 whitespace-nowrap tabular-nums">
+            <span>Kuala Lumpur {formatTime(time)}</span>
+            <button
+              type="button"
+              onClick={toggleTheme}
+              className="theme-toggle"
+              aria-label={`Switch to ${theme === "light" ? "dark" : "light"} mode`}
+              title={`Switch to ${theme === "light" ? "dark" : "light"} mode`}
+            >
+              <span aria-hidden="true">{theme === "light" ? "☾" : "☼"}</span>
+            </button>
           </span>
         </div>
       </header>
@@ -335,33 +549,49 @@ const Portfolio = () => {
         >
         {/* Hero Section */}
         <section
-          className="h-[calc(60vh-var(--header-height))] flex flex-col items-center justify-center px-8 text-center"
+          className="hero-viewport flex bg-[#F6FDFC] px-5 text-center sm:px-8"
         >
-          <div className="flex flex-col items-center gap-4">
-            <h1
-              aria-label={FULL_NAME}
-              className="flex h-[1.1em] items-center justify-center text-[9vw] xl:text-[10vw] leading-[1.1] font-serif"
-            >
-              <span aria-hidden="true">
-                {displayedName.map(({ character, font }, index) => (
-                  <span key={index} className={font}>
-                    {character}
-                  </span>
-                ))}
-                <span className="typewriter-cursor" />
+          <h1
+            aria-label={displayedIntro.label}
+            className="typewriter-line flex h-full w-full items-center text-[clamp(3rem,8vw,9rem)] font-normal leading-[0.92] tracking-[-0.055em]"
+          >
+            {displayedIntro.items.length > 0 && (
+              <span aria-hidden="true" className="block w-full">
+                {displayedIntro.items.map((item, index) => {
+                  const isClosingBrace =
+                    item.kind === "character" && item.character === "}";
+
+                  return (
+                    <React.Fragment key={index}>
+                      {isClosingBrace && <span className="typewriter-cursor" />}
+                      {item.kind === "coffee" ? (
+                        <span className="typewriter-coffee">
+                          <img src="/coffee.png" alt="" />
+                        </span>
+                      ) : (
+                        <span className={item.font}>{item.character}</span>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+                {!displayedIntro.items.some(
+                  (item) =>
+                    item.kind === "character" && item.character === "}"
+                ) && <span className="typewriter-cursor" />}
               </span>
-            </h1>
-            <p className="text-lg text-gray-600">
-              frontend developer with an interest for coffee
-            </p>
-          </div>
+            )}
+          </h1>
         </section>
 
         {/* About Section */}
         <div className="min-h-[40vh] md:h-[40vh]">
           <div className="grid h-full flex-initial grid-cols-1 divide-y divide-[#17191A] border border-[#17191A] md:grid-cols-3 md:divide-x md:divide-y-0">
             <div className="">
-              <InfoCard title="About" number="01" bgColor="bg-[#E0FDF5]">
+              <InfoCard
+                title="About"
+                number="01"
+                bgColor="theme-accent-mint bg-[#E0FDF5]"
+              >
                 <p>
                   Frontend developer with a passion for clean code and
                   minimalist design. When I'm not crafting digital experiences,
@@ -388,7 +618,11 @@ const Portfolio = () => {
             </div>
 
             <div className="h-full">
-              <InfoCard title="Photography" number="02" bgColor="bg-[#FED7AA]">
+              <InfoCard
+                title="Photography"
+                number="02"
+                bgColor="theme-accent-orange bg-[#FED7AA]"
+              >
                 <p>
                   Street photography, landscape shots, and candid moments.
                   Currently still lost in my Korea trip's Lightroom catalog.
@@ -401,7 +635,7 @@ const Portfolio = () => {
         {/* Projects Section */}
         <section
           aria-labelledby="projects-heading"
-          className="relative z-10 grid min-h-[calc(100vh-var(--header-height))] border-b border-[#17191A] bg-[#F6FDFC] md:grid-cols-2"
+          className="projects-viewport relative z-10 grid border-b border-[#17191A] bg-[#F6FDFC] md:grid-cols-2"
         >
           <span
             ref={projectSnapRef}
@@ -513,8 +747,8 @@ const Portfolio = () => {
             </div>
           ))}
 
-          <div className="h-[calc(100vh-var(--header-height)-22.4vw-3.5rem)] bg-[#F6FDFC] p-5 md:p-8">
-            <div className="relative grid h-full grid-cols-1 gap-16 after:hidden after:bg-[#17191A] after:content-[''] md:grid-cols-2 md:after:absolute md:after:inset-y-0 md:after:left-1/2 md:after:block md:after:w-px md:after:-translate-x-1/2">
+          <div className="contact-content flex bg-[#F6FDFC] p-5 md:p-8">
+            <div className="relative grid min-h-0 w-full flex-1 grid-cols-1 gap-16 after:hidden after:bg-[#17191A] after:content-[''] md:grid-cols-2 md:after:absolute md:after:inset-y-0 md:after:left-1/2 md:after:block md:after:w-px md:after:-translate-x-1/2">
               <div className="hidden h-full min-h-0 items-center justify-center md:flex">
                 <video
                   autoPlay
@@ -522,7 +756,7 @@ const Portfolio = () => {
                   muted
                   playsInline
                   aria-label="Animated artwork"
-                  className="h-full w-full object-cover"
+                  className="theme-natural-media h-full w-full object-cover"
                 >
                   <source src="/TDMovieOut.0.mp4" type="video/mp4" />
                 </video>
@@ -565,8 +799,11 @@ const Portfolio = () => {
         </section>
 
         {/* Footer */}
-        <footer className="h-14 border-t border-[#D1D5DB] bg-[#F6FDFC] px-8 text-[18px]">
-          <div className="flex h-full items-center justify-between">
+        <footer
+          ref={footerRef}
+          className="min-h-14 border-t border-[#D1D5DB] bg-[#F6FDFC] px-5 py-4 text-sm sm:h-14 sm:px-8 sm:py-0 sm:text-[18px]"
+        >
+          <div className="flex h-full flex-col justify-center gap-1 sm:flex-row sm:items-center sm:justify-between">
             <span>© 2024 Jun Yu Choo</span>
             <span>Built with React & Tailwind</span>
           </div>
