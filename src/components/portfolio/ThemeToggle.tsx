@@ -5,7 +5,7 @@ import {
   type SetStateAction,
 } from "react";
 import { createPortal, flushSync } from "react-dom";
-import { motion, useReducedMotion } from "motion/react";
+import { animate, motion, useReducedMotion } from "motion/react";
 
 export type Theme = "light" | "dark";
 
@@ -44,6 +44,11 @@ const COLLAPSED_RAY_PATHS = [
 const CORE_EASE = [0.65, 0, 0.35, 1] as const;
 const RAY_EASE = [0.4, 0, 1, 1] as const;
 const RAY_RETURN_EASE = [0, 0, 0.2, 1] as const;
+const REVEAL_START_EASE = [0.55, 0, 0.85, 0.35] as const;
+const REVEAL_EXPAND_EASE = [0.22, 1, 0.36, 1] as const;
+const REVEAL_DURATION = 2.1;
+const REVEAL_SLOW_PHASE = 0.2;
+const REVEAL_SLOW_RADIUS = 8;
 
 interface ThemeIconProps {
   isDark: boolean;
@@ -158,11 +163,17 @@ export const ThemeToggle = ({ theme, setTheme }: ThemeToggleProps) => {
       Math.max(originX, window.innerWidth - originX),
       Math.max(originY, window.innerHeight - originY)
     );
+    const updateRevealMask = (radius: number): void => {
+      const mask = `radial-gradient(circle at ${originXPercent}% ${originYPercent}%, transparent 0 ${radius}px, #000 ${radius + 1}px)`;
+      liveLayer.style.maskImage = mask;
+      liveLayer.style.setProperty("-webkit-mask-image", mask);
+    };
     const viewportClone = sourceViewport.cloneNode(true) as HTMLElement;
     let overlayIsOpen = false;
     let animationFrame = 0;
     let fallbackTimer = 0;
     let finished = false;
+    let revealAnimation: ReturnType<typeof animate> | null = null;
 
     viewportClone.classList.add("theme-live-page-clone");
     viewportClone.setAttribute("aria-hidden", "true");
@@ -170,10 +181,7 @@ export const ThemeToggle = ({ theme, setTheme }: ThemeToggleProps) => {
     liveLayer.replaceChildren(viewportClone);
     liveLayer.style.setProperty("--theme-reveal-x", `${originXPercent}%`);
     liveLayer.style.setProperty("--theme-reveal-y", `${originYPercent}%`);
-    liveLayer.style.setProperty(
-      "--theme-reveal-radius-end",
-      `${revealRadius + 2}px`
-    );
+    updateRevealMask(0);
 
     if (
       overlay &&
@@ -271,7 +279,8 @@ export const ThemeToggle = ({ theme, setTheme }: ThemeToggleProps) => {
       window.clearTimeout(fallbackTimer);
       window.cancelAnimationFrame(animationFrame);
       mutationObserver.disconnect();
-      liveLayer.removeEventListener("animationend", handleAnimationEnd);
+      revealAnimation?.stop();
+      revealAnimation = null;
 
       if (overlayIsOpen && overlay?.matches(":popover-open")) {
         overlay.hidePopover();
@@ -279,20 +288,29 @@ export const ThemeToggle = ({ theme, setTheme }: ThemeToggleProps) => {
 
       delete liveLayer.dataset.active;
       liveLayer.replaceChildren();
+      liveLayer.style.removeProperty("mask-image");
+      liveLayer.style.removeProperty("-webkit-mask-image");
+      liveLayer.style.removeProperty("--theme-reveal-x");
+      liveLayer.style.removeProperty("--theme-reveal-y");
       transitionRunningRef.current = false;
     };
 
-    const handleAnimationEnd = (animationEvent: AnimationEvent): void => {
-      if (animationEvent.animationName === "theme-live-page-reveal") {
-        finishTransition();
-      }
-    };
-
-    liveLayer.addEventListener("animationend", handleAnimationEnd);
     delete liveLayer.dataset.active;
     void liveLayer.offsetWidth;
     liveLayer.dataset.active = "true";
     applyTheme();
+
+    revealAnimation = animate(
+      0,
+      [0, REVEAL_SLOW_RADIUS, revealRadius + 2],
+      {
+        duration: REVEAL_DURATION,
+        times: [0, REVEAL_SLOW_PHASE / REVEAL_DURATION, 1],
+        ease: [REVEAL_START_EASE, REVEAL_EXPAND_EASE],
+        onUpdate: updateRevealMask,
+        onComplete: finishTransition,
+      }
+    );
     fallbackTimer = window.setTimeout(finishTransition, 2300);
   };
 

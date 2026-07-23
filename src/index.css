@@ -59,59 +59,25 @@ html[data-theme="dark"] body {
   background: #090203;
 }
 
-@property --theme-reveal-radius {
-  syntax: "<length>";
-  inherits: false;
-  initial-value: 0px;
-}
-
 .theme-live-page-layer {
-  --theme-reveal-radius: 0px;
   position: fixed;
   inset: 0;
   z-index: 9999;
   visibility: hidden;
   overflow: hidden;
   pointer-events: none;
-  -webkit-mask-image: radial-gradient(
-    circle at var(--theme-reveal-x) var(--theme-reveal-y),
-    transparent 0 var(--theme-reveal-radius),
-    #000 calc(var(--theme-reveal-radius) + 1px)
-  );
-  mask-image: radial-gradient(
-    circle at var(--theme-reveal-x) var(--theme-reveal-y),
-    transparent 0 var(--theme-reveal-radius),
-    #000 calc(var(--theme-reveal-radius) + 1px)
-  );
   -webkit-mask-repeat: no-repeat;
   mask-repeat: no-repeat;
 }
 
 .theme-live-page-layer[data-active="true"] {
   visibility: visible;
-  animation: theme-live-page-reveal 2100ms linear both;
-  will-change: --theme-reveal-radius;
+  will-change: mask-image, -webkit-mask-image;
 }
 
 .theme-live-page-clone {
   position: absolute;
   inset: 0;
-}
-
-@keyframes theme-live-page-reveal {
-  0% {
-    --theme-reveal-radius: 0px;
-    animation-timing-function: cubic-bezier(0.55, 0, 0.85, 0.35);
-  }
-
-  9.524% {
-    --theme-reveal-radius: 0.5rem;
-    animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
-  }
-
-  100% {
-    --theme-reveal-radius: var(--theme-reveal-radius-end);
-  }
 }
 
 .hero-viewport {
