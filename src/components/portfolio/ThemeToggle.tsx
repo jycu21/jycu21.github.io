@@ -55,6 +55,82 @@ interface ThemeIconProps {
   shouldReduceMotion: boolean;
 }
 
+interface PromotedVideo {
+  position: () => void;
+  restore: () => void;
+}
+
+const promoteVideoAboveTransition = (
+  sourceVideo: HTMLVideoElement,
+  cloneVideo: HTMLVideoElement
+): PromotedVideo | null => {
+  const anchor = sourceVideo.parentElement;
+  if (!anchor || typeof sourceVideo.showPopover !== "function") return null;
+
+  const originalStyle = sourceVideo.getAttribute("style");
+  const originalPopover = sourceVideo.getAttribute("popover");
+
+  const position = (): void => {
+    const bounds = anchor.getBoundingClientRect();
+
+    sourceVideo.style.position = "fixed";
+    sourceVideo.style.inset = "auto";
+    sourceVideo.style.left = `${bounds.left}px`;
+    sourceVideo.style.top = `${bounds.top}px`;
+    sourceVideo.style.width = `${bounds.width}px`;
+    sourceVideo.style.height = `${bounds.height}px`;
+    sourceVideo.style.maxWidth = "none";
+    sourceVideo.style.maxHeight = "none";
+    sourceVideo.style.margin = "0";
+    sourceVideo.style.padding = "0";
+    sourceVideo.style.border = "0";
+    sourceVideo.style.background = "transparent";
+    sourceVideo.style.filter = "none";
+    sourceVideo.style.pointerEvents = "none";
+  };
+
+  const restore = (): void => {
+    try {
+      if (sourceVideo.matches(":popover-open")) {
+        sourceVideo.hidePopover();
+      }
+    } catch {
+      // Removing the temporary attributes below also restores the video.
+    }
+
+    sourceVideo.classList.remove("theme-live-media-popover");
+
+    if (originalStyle === null) {
+      sourceVideo.removeAttribute("style");
+    } else {
+      sourceVideo.setAttribute("style", originalStyle);
+    }
+
+    if (originalPopover === null) {
+      sourceVideo.removeAttribute("popover");
+    } else {
+      sourceVideo.setAttribute("popover", originalPopover);
+    }
+  };
+
+  try {
+    sourceVideo.setAttribute("popover", "manual");
+    sourceVideo.classList.add("theme-live-media-popover");
+    position();
+    sourceVideo.showPopover();
+
+    const placeholder = document.createElement("div");
+    placeholder.className = "theme-live-media-placeholder";
+    placeholder.setAttribute("aria-hidden", "true");
+    cloneVideo.replaceWith(placeholder);
+
+    return { position, restore };
+  } catch {
+    restore();
+    return null;
+  }
+};
+
 const ThemeIcon = ({ isDark, shouldReduceMotion }: ThemeIconProps) => {
   const coreTransition = shouldReduceMotion
     ? { duration: 0 }
@@ -169,6 +245,27 @@ export const ThemeToggle = ({ theme, setTheme }: ThemeToggleProps) => {
       liveLayer.style.setProperty("-webkit-mask-image", mask);
     };
     const viewportClone = sourceViewport.cloneNode(true) as HTMLElement;
+    const sourceVideos = Array.from(
+      sourceViewport.querySelectorAll<HTMLVideoElement>("video")
+    );
+    const cloneVideos = Array.from(
+      viewportClone.querySelectorAll<HTMLVideoElement>("video")
+    );
+    const promotedVideos = sourceVideos.flatMap((sourceVideo, index) => {
+      const cloneVideo = cloneVideos[index];
+      if (!cloneVideo) return [];
+
+      const promotion = promoteVideoAboveTransition(sourceVideo, cloneVideo);
+      return promotion ? [promotion] : [];
+    });
+
+    if (promotedVideos.length !== sourceVideos.length) {
+      promotedVideos.forEach(({ restore }) => restore());
+      transitionRunningRef.current = false;
+      applyTheme();
+      return;
+    }
+
     let overlayIsOpen = false;
     let animationFrame = 0;
     let fallbackTimer = 0;
@@ -182,6 +279,9 @@ export const ThemeToggle = ({ theme, setTheme }: ThemeToggleProps) => {
     liveLayer.style.setProperty("--theme-reveal-x", `${originXPercent}%`);
     liveLayer.style.setProperty("--theme-reveal-y", `${originYPercent}%`);
     updateRevealMask(0);
+    delete liveLayer.dataset.active;
+    void liveLayer.offsetWidth;
+    liveLayer.dataset.active = "true";
 
     if (
       overlay &&
@@ -207,12 +307,6 @@ export const ThemeToggle = ({ theme, setTheme }: ThemeToggleProps) => {
     );
     const cloneScroller = viewportClone.querySelector<HTMLElement>(
       "[data-scroll-wrapper]"
-    );
-    const sourceVideos = Array.from(
-      sourceViewport.querySelectorAll<HTMLVideoElement>("video")
-    );
-    const cloneVideos = Array.from(
-      viewportClone.querySelectorAll<HTMLVideoElement>("video")
     );
 
     const syncDynamicContent = (): void => {
@@ -254,19 +348,7 @@ export const ThemeToggle = ({ theme, setTheme }: ThemeToggleProps) => {
         cloneScroller.scrollLeft = sourceScroller.scrollLeft;
       }
 
-      sourceVideos.forEach((sourceVideo, index) => {
-        const cloneVideo = cloneVideos[index];
-        if (!cloneVideo || !Number.isFinite(sourceVideo.currentTime)) return;
-
-        if (Math.abs(cloneVideo.currentTime - sourceVideo.currentTime) > 0.08) {
-          try {
-            cloneVideo.currentTime = sourceVideo.currentTime;
-          } catch {
-            // A video without metadata will synchronize on a later frame.
-          }
-        }
-      });
-
+      promotedVideos.forEach(({ position }) => position());
       animationFrame = window.requestAnimationFrame(syncMovingContent);
     };
 
@@ -279,6 +361,7 @@ export const ThemeToggle = ({ theme, setTheme }: ThemeToggleProps) => {
       window.clearTimeout(fallbackTimer);
       window.cancelAnimationFrame(animationFrame);
       mutationObserver.disconnect();
+      promotedVideos.forEach(({ restore }) => restore());
       revealAnimation?.stop();
       revealAnimation = null;
 
@@ -295,23 +378,26 @@ export const ThemeToggle = ({ theme, setTheme }: ThemeToggleProps) => {
       transitionRunningRef.current = false;
     };
 
-    delete liveLayer.dataset.active;
-    void liveLayer.offsetWidth;
-    liveLayer.dataset.active = "true";
-    applyTheme();
+    const startReveal = (): void => {
+      if (finished) return;
 
-    revealAnimation = animate(
-      0,
-      [0, REVEAL_SLOW_RADIUS, revealRadius + 2],
-      {
-        duration: REVEAL_DURATION,
-        times: [0, REVEAL_SLOW_PHASE / REVEAL_DURATION, 1],
-        ease: [REVEAL_START_EASE, REVEAL_EXPAND_EASE],
-        onUpdate: updateRevealMask,
-        onComplete: finishTransition,
-      }
-    );
-    fallbackTimer = window.setTimeout(finishTransition, 2300);
+      applyTheme();
+
+      revealAnimation = animate(
+        0,
+        [0, REVEAL_SLOW_RADIUS, revealRadius + 2],
+        {
+          duration: REVEAL_DURATION,
+          times: [0, REVEAL_SLOW_PHASE / REVEAL_DURATION, 1],
+          ease: [REVEAL_START_EASE, REVEAL_EXPAND_EASE],
+          onUpdate: updateRevealMask,
+          onComplete: finishTransition,
+        }
+      );
+      fallbackTimer = window.setTimeout(finishTransition, 2300);
+    };
+
+    startReveal();
   };
 
   return (
