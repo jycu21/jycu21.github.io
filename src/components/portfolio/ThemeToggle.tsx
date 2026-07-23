@@ -5,7 +5,7 @@ import {
   type SetStateAction,
 } from "react";
 import { createPortal, flushSync } from "react-dom";
-import { gsap } from "gsap";
+import { motion, useReducedMotion } from "motion/react";
 
 export type Theme = "light" | "dark";
 
@@ -14,66 +14,138 @@ interface ThemeToggleProps {
   setTheme: Dispatch<SetStateAction<Theme>>;
 }
 
-const MOON_CORE_PATH =
-  "M16.7 1.2 C9.8 2.5 6.2 9 8.6 15.4 C11 21.8 18 23.8 23.25 19.5 C17.2 19.6 12.4 15.2 12.4 9.6 C12.4 6.4 13.9 3.4 16.7 1.2 Z";
 const SUN_CORE_PATH =
-  "M12 7 C9.239 7 7 9.239 7 12 C7 14.761 9.239 17 12 17 C14.761 17 17 14.761 17 12 C17 9.239 14.761 7 12 7 Z";
-const MOON_CORE_STROKE_WIDTH = 1.2;
-const SUN_CORE_STROKE_WIDTH = 1.5;
-const MOON_RAY_PATHS = [
-  "M16.8 3.2 Q16.8 3.2 16.8 3.2",
-  "M13 5.5 Q13 5.5 13 5.5",
-  "M10.2 9 Q10.2 9 10.2 9",
-  "M9.3 13 Q9.3 13 9.3 13",
-  "M11.2 17.7 Q11.2 17.7 11.2 17.7",
-  "M15 20.5 Q15 20.5 15 20.5",
-  "M19.2 20.4 Q19.2 20.4 19.2 20.4",
-  "M22.8 18.8 Q22.8 18.8 22.8 18.8",
-] as const;
+  "M12 6 C8.686 6 6 8.686 6 12 C6 15.314 8.686 18 12 18 C15.314 18 18 15.314 18 12 C18 8.686 15.314 6 12 6 Z";
+const MOON_CORE_PATH =
+  "M12 6 C8.686 6 6 8.686 6 12 C6 15.314 8.686 18 12 18 C14.9 18 17.35 16.1 18 13.5 C14.25 14.1 11.35 10.75 12 6 Z";
+
 const SUN_RAY_PATHS = [
-  "M12 0.75 Q12 2.375 12 4",
-  "M19.955 4.045 Q18.807 5.193 17.66 6.34",
-  "M23.25 12 Q21.625 12 20 12",
-  "M19.955 19.955 Q18.807 18.807 17.66 17.66",
-  "M12 23.25 Q12 21.625 12 20",
-  "M4.045 19.955 Q5.193 18.807 6.34 17.66",
-  "M0.75 12 Q2.375 12 4 12",
-  "M4.045 4.045 Q5.193 5.193 6.34 6.34",
+  "M12 2 Q12 3 12 4",
+  "M19.071 4.929 Q18.364 5.636 17.657 6.343",
+  "M22 12 Q21 12 20 12",
+  "M19.071 19.071 Q18.364 18.364 17.657 17.657",
+  "M12 22 Q12 21 12 20",
+  "M4.929 19.071 Q5.636 18.364 6.343 17.657",
+  "M2 12 Q3 12 4 12",
+  "M4.929 4.929 Q5.636 5.636 6.343 6.343",
 ] as const;
+
+const COLLAPSED_RAY_PATHS = [
+  "M12 3 Q12 3 12 3",
+  "M18.364 5.636 Q18.364 5.636 18.364 5.636",
+  "M21 12 Q21 12 21 12",
+  "M18.364 18.364 Q18.364 18.364 18.364 18.364",
+  "M12 21 Q12 21 12 21",
+  "M5.636 18.364 Q5.636 18.364 5.636 18.364",
+  "M3 12 Q3 12 3 12",
+  "M5.636 5.636 Q5.636 5.636 5.636 5.636",
+] as const;
+
+const CORE_EASE = [0.65, 0, 0.35, 1] as const;
+const RAY_EASE = [0.4, 0, 1, 1] as const;
+const RAY_RETURN_EASE = [0, 0, 0.2, 1] as const;
+
+interface ThemeIconProps {
+  isDark: boolean;
+  shouldReduceMotion: boolean;
+}
+
+const ThemeIcon = ({ isDark, shouldReduceMotion }: ThemeIconProps) => {
+  const coreTransition = shouldReduceMotion
+    ? { duration: 0 }
+    : {
+        duration: isDark ? 0.34 : 0.3,
+        delay: isDark ? 0.14 : 0,
+        ease: CORE_EASE,
+      };
+
+  return (
+    <svg
+      className="theme-toggle-icon"
+      viewBox="0 0 24 24"
+      fill="none"
+      focusable="false"
+    >
+      <motion.path
+        className="theme-toggle-icon-line theme-toggle-icon-core"
+        initial={false}
+        animate={{
+          d: isDark ? MOON_CORE_PATH : SUN_CORE_PATH,
+        }}
+        transition={coreTransition}
+      />
+      {SUN_RAY_PATHS.map((sunPath, index) => (
+        <motion.path
+          key={index}
+          className="theme-toggle-icon-line theme-toggle-icon-ray"
+          initial={false}
+          animate={{
+            d: isDark ? COLLAPSED_RAY_PATHS[index] : sunPath,
+            opacity: isDark ? 0 : 1,
+          }}
+          transition={
+            shouldReduceMotion
+              ? { duration: 0 }
+              : {
+                  duration: isDark ? 0.16 : 0.22,
+                  delay: isDark ? index * 0.006 : 0.2 + index * 0.008,
+                  ease: isDark ? RAY_EASE : RAY_RETURN_EASE,
+                }
+          }
+        />
+      ))}
+    </svg>
+  );
+};
 
 export const ThemeToggle = ({ theme, setTheme }: ThemeToggleProps) => {
   const iconShellRef = useRef<HTMLSpanElement>(null);
-  const iconRef = useRef<SVGSVGElement>(null);
-  const iconCoreRef = useRef<SVGPathElement>(null);
-  const iconRayRefs = useRef<Array<SVGPathElement | null>>([]);
   const overlayRef = useRef<HTMLSpanElement>(null);
-  const overlaySvgRef = useRef<SVGSVGElement>(null);
-  const overlayCoreRef = useRef<SVGPathElement>(null);
-  const overlayRayRefs = useRef<Array<SVGPathElement | null>>([]);
+  const liveLayerRef = useRef<HTMLDivElement>(null);
   const transitionRunningRef = useRef(false);
-  const initialThemeRef = useRef(theme);
+  const shouldReduceMotion = Boolean(useReducedMotion());
+  const isDark = theme === "dark";
+  const nextTheme: Theme = isDark ? "light" : "dark";
 
   const handleClick = (event: ReactMouseEvent<HTMLButtonElement>): void => {
     if (transitionRunningRef.current) return;
+
+    const applyTheme = (): void => {
+      document.documentElement.dataset.theme = nextTheme;
+      flushSync(() => setTheme(nextTheme));
+    };
+
+    const overlay = overlayRef.current;
+    const liveLayer = liveLayerRef.current;
+    const iconShell = iconShellRef.current;
+    const sourceViewport = document.querySelector<HTMLElement>(".site-viewport");
+    const supportsMask =
+      CSS.supports(
+        "mask-image",
+        "radial-gradient(circle, transparent 0, black 1px)"
+      ) ||
+      CSS.supports(
+        "-webkit-mask-image",
+        "radial-gradient(circle, transparent 0, black 1px)"
+      );
+
+    if (
+      shouldReduceMotion ||
+      !liveLayer ||
+      !sourceViewport ||
+      !supportsMask
+    ) {
+      applyTheme();
+      return;
+    }
+
     transitionRunningRef.current = true;
 
-    const nextTheme: Theme = theme === "light" ? "dark" : "light";
-    const icon = iconRef.current;
-    const iconCore = iconCoreRef.current;
-    const iconRays = iconRayRefs.current.filter(
-      (ray): ray is SVGPathElement => ray !== null
-    );
-    const overlay = overlayRef.current;
-    const overlaySvg = overlaySvgRef.current;
-    const overlayCore = overlayCoreRef.current;
-    const overlayRays = overlayRayRefs.current.filter(
-      (ray): ray is SVGPathElement => ray !== null
-    );
-    const { left, top, width, height } =
+    const iconBounds =
+      iconShell?.getBoundingClientRect() ??
       event.currentTarget.getBoundingClientRect();
-    const pointerActivation = event.detail > 0;
-    const originX = pointerActivation ? event.clientX : left + width / 2;
-    const originY = pointerActivation ? event.clientY : top + height / 2;
+    const originX = iconBounds.left + iconBounds.width / 2;
+    const originY = iconBounds.top + iconBounds.height / 2;
     const originXPercent = Math.min(
       100,
       Math.max(0, (originX / window.innerWidth) * 100)
@@ -82,216 +154,147 @@ export const ThemeToggle = ({ theme, setTheme }: ThemeToggleProps) => {
       100,
       Math.max(0, (originY / window.innerHeight) * 100)
     );
-    const prefersReducedMotion = window.matchMedia(
-      "(prefers-reduced-motion: reduce)"
-    ).matches;
-    const targetCorePath =
-      nextTheme === "dark" ? MOON_CORE_PATH : SUN_CORE_PATH;
-    const targetRayPaths =
-      nextTheme === "dark" ? MOON_RAY_PATHS : SUN_RAY_PATHS;
-    const targetRotation = nextTheme === "dark" ? -8 : 0;
-    const targetY = nextTheme === "dark" ? -0.75 : 0;
-    const targetCoreStrokeWidth =
-      nextTheme === "dark"
-        ? MOON_CORE_STROKE_WIDTH
-        : SUN_CORE_STROKE_WIDTH;
-
-    const updateIconGeometry = (
-      targetIcon: SVGSVGElement,
-      targetCore: SVGPathElement,
-      targetRays: SVGPathElement[]
-    ): void => {
-      targetCore.setAttribute("d", targetCorePath);
-      targetRays.forEach((ray, index) => {
-        ray.setAttribute("d", targetRayPaths[index]);
-      });
-      gsap.set(targetCore, { strokeWidth: targetCoreStrokeWidth });
-      gsap.set(targetIcon, { rotation: targetRotation, y: targetY });
-    };
-
-    let morphIcon = icon;
-    let morphCore = iconCore;
-    let morphRays = iconRays;
+    const revealRadius = Math.hypot(
+      Math.max(originX, window.innerWidth - originX),
+      Math.max(originY, window.innerHeight - originY)
+    );
+    const viewportClone = sourceViewport.cloneNode(true) as HTMLElement;
     let overlayIsOpen = false;
+    let animationFrame = 0;
+    let fallbackTimer = 0;
+    let finished = false;
+
+    viewportClone.classList.add("theme-live-page-clone");
+    viewportClone.setAttribute("aria-hidden", "true");
+    viewportClone.inert = true;
+    liveLayer.replaceChildren(viewportClone);
+    liveLayer.style.setProperty("--theme-reveal-x", `${originXPercent}%`);
+    liveLayer.style.setProperty("--theme-reveal-y", `${originYPercent}%`);
+    liveLayer.style.setProperty(
+      "--theme-reveal-radius-end",
+      `${revealRadius + 2}px`
+    );
 
     if (
       overlay &&
-      overlaySvg &&
-      overlayCore &&
-      overlayRays.length === SUN_RAY_PATHS.length &&
-      iconShellRef.current &&
+      iconShell &&
       typeof overlay.showPopover === "function"
     ) {
-      const shellBounds = iconShellRef.current.getBoundingClientRect();
-
-      overlay.style.left = `${shellBounds.left}px`;
-      overlay.style.top = `${shellBounds.top}px`;
-      overlay.style.color =
-        nextTheme === "dark" ? "#d2d2d2" : "#2d2d2d";
+      overlay.style.left = `${iconBounds.left}px`;
+      overlay.style.top = `${iconBounds.top}px`;
+      overlay.style.width = `${iconBounds.width}px`;
+      overlay.style.height = `${iconBounds.height}px`;
+      overlay.style.color = nextTheme === "dark" ? "#d2d2d2" : "#2d2d2d";
 
       try {
         overlay.showPopover();
         overlayIsOpen = true;
-        morphIcon = overlaySvg;
-        morphCore = overlayCore;
-        morphRays = overlayRays;
       } catch {
-        // The in-place SVG remains the fallback when popovers are unavailable.
+        // The page reveal still works when popovers are unavailable.
       }
     }
 
-    if (
-      overlayIsOpen &&
-      icon &&
-      iconCore &&
-      iconRays.length === SUN_RAY_PATHS.length
-    ) {
-      updateIconGeometry(icon, iconCore, iconRays);
-    }
+    const sourceScroller = sourceViewport.querySelector<HTMLElement>(
+      "[data-scroll-wrapper]"
+    );
+    const cloneScroller = viewportClone.querySelector<HTMLElement>(
+      "[data-scroll-wrapper]"
+    );
+    const sourceVideos = Array.from(
+      sourceViewport.querySelectorAll<HTMLVideoElement>("video")
+    );
+    const cloneVideos = Array.from(
+      viewportClone.querySelectorAll<HTMLVideoElement>("video")
+    );
 
-    const animateIcon = (): Promise<void> => {
-      if (
-        !morphIcon ||
-        !morphCore ||
-        morphRays.length !== SUN_RAY_PATHS.length
-      ) {
-        return Promise.resolve();
+    const syncDynamicContent = (): void => {
+      sourceViewport
+        .querySelectorAll<HTMLElement>("[data-live-sync]")
+        .forEach((sourceElement) => {
+          const key = sourceElement.dataset.liveSync;
+          if (!key) return;
+
+          const cloneElement = viewportClone.querySelector<HTMLElement>(
+            `[data-live-sync="${CSS.escape(key)}"]`
+          );
+          if (!cloneElement) return;
+
+          if (cloneElement.innerHTML !== sourceElement.innerHTML) {
+            cloneElement.innerHTML = sourceElement.innerHTML;
+          }
+
+          const ariaLabel = sourceElement.getAttribute("aria-label");
+          if (ariaLabel === null) {
+            cloneElement.removeAttribute("aria-label");
+          } else {
+            cloneElement.setAttribute("aria-label", ariaLabel);
+          }
+        });
+    };
+
+    const mutationObserver = new MutationObserver(syncDynamicContent);
+    mutationObserver.observe(sourceViewport, {
+      childList: true,
+      characterData: true,
+      subtree: true,
+    });
+    syncDynamicContent();
+
+    const syncMovingContent = (): void => {
+      if (sourceScroller && cloneScroller) {
+        cloneScroller.scrollTop = sourceScroller.scrollTop;
+        cloneScroller.scrollLeft = sourceScroller.scrollLeft;
       }
 
-      gsap.killTweensOf([morphIcon, morphCore, ...morphRays]);
+      sourceVideos.forEach((sourceVideo, index) => {
+        const cloneVideo = cloneVideos[index];
+        if (!cloneVideo || !Number.isFinite(sourceVideo.currentTime)) return;
 
-      if (prefersReducedMotion) {
-        updateIconGeometry(morphIcon, morphCore, morphRays);
-        return Promise.resolve();
-      }
-
-      return new Promise((resolve) => {
-        const timeline = gsap.timeline({ onComplete: resolve });
-
-        if (nextTheme === "dark") {
-          timeline
-            .to(
-              morphRays,
-              {
-                attr: { d: (index: number) => targetRayPaths[index] },
-                duration: 0.18,
-                ease: "power2.in",
-                stagger: { each: 0.004, from: "end" },
-              },
-              0
-            )
-            .to(
-              morphCore,
-              {
-                attr: { d: targetCorePath },
-                strokeWidth: targetCoreStrokeWidth,
-                duration: 0.32,
-                ease: "power2.inOut",
-              },
-              0.16
-            )
-            .to(
-              morphIcon,
-              {
-                rotation: targetRotation,
-                y: targetY,
-                duration: 0.32,
-                ease: "power2.inOut",
-              },
-              0.16
-            );
-        } else {
-          timeline
-            .to(
-              morphCore,
-              {
-                attr: { d: targetCorePath },
-                strokeWidth: targetCoreStrokeWidth,
-                duration: 0.3,
-                ease: "power2.inOut",
-              },
-              0
-            )
-            .to(
-              morphIcon,
-              {
-                rotation: targetRotation,
-                y: targetY,
-                duration: 0.3,
-                ease: "power2.inOut",
-              },
-              0
-            )
-            .to(
-              morphRays,
-              {
-                attr: { d: (index: number) => targetRayPaths[index] },
-                duration: 0.22,
-                ease: "power2.out",
-                stagger: { each: 0.004, from: "start" },
-              },
-              0.26
-            );
+        if (Math.abs(cloneVideo.currentTime - sourceVideo.currentTime) > 0.08) {
+          try {
+            cloneVideo.currentTime = sourceVideo.currentTime;
+          } catch {
+            // A video without metadata will synchronize on a later frame.
+          }
         }
       });
+
+      animationFrame = window.requestAnimationFrame(syncMovingContent);
     };
 
-    const applyTheme = (): void => {
-      document.documentElement.dataset.theme = nextTheme;
-      flushSync(() => setTheme(nextTheme));
-    };
+    syncMovingContent();
 
-    const revealTheme = (): Promise<void> => {
-      if (
-        prefersReducedMotion ||
-        typeof document.startViewTransition !== "function"
-      ) {
-        applyTheme();
-        return Promise.resolve();
-      }
+    const finishTransition = (): void => {
+      if (finished) return;
+      finished = true;
 
-      const root = document.documentElement;
+      window.clearTimeout(fallbackTimer);
+      window.cancelAnimationFrame(animationFrame);
+      mutationObserver.disconnect();
+      liveLayer.removeEventListener("animationend", handleAnimationEnd);
 
-      root.dataset.themeTransitioning = "true";
-      root.style.setProperty("--theme-reveal-x", `${originXPercent}%`);
-      root.style.setProperty("--theme-reveal-y", `${originYPercent}%`);
-
-      try {
-        const transition = document.startViewTransition(applyTheme);
-        return transition.finished
-          .then(() => undefined)
-          .catch(() => undefined)
-          .finally(() => {
-            delete root.dataset.themeTransitioning;
-            root.style.removeProperty("--theme-reveal-x");
-            root.style.removeProperty("--theme-reveal-y");
-          });
-      } catch {
-        applyTheme();
-        delete root.dataset.themeTransitioning;
-        root.style.removeProperty("--theme-reveal-x");
-        root.style.removeProperty("--theme-reveal-y");
-        return Promise.resolve();
-      }
-    };
-
-    void Promise.allSettled([animateIcon(), revealTheme()]).then(() => {
       if (overlayIsOpen && overlay?.matches(":popover-open")) {
         overlay.hidePopover();
       }
-      transitionRunningRef.current = false;
-    });
-  };
 
-  const initialCorePath =
-    initialThemeRef.current === "light" ? SUN_CORE_PATH : MOON_CORE_PATH;
-  const initialRayPaths =
-    initialThemeRef.current === "light" ? SUN_RAY_PATHS : MOON_RAY_PATHS;
-  const initialStrokeWidth =
-    initialThemeRef.current === "light"
-      ? SUN_CORE_STROKE_WIDTH
-      : MOON_CORE_STROKE_WIDTH;
-  const nextTheme: Theme = theme === "light" ? "dark" : "light";
+      delete liveLayer.dataset.active;
+      liveLayer.replaceChildren();
+      transitionRunningRef.current = false;
+    };
+
+    const handleAnimationEnd = (animationEvent: AnimationEvent): void => {
+      if (animationEvent.animationName === "theme-live-page-reveal") {
+        finishTransition();
+      }
+    };
+
+    liveLayer.addEventListener("animationend", handleAnimationEnd);
+    delete liveLayer.dataset.active;
+    void liveLayer.offsetWidth;
+    liveLayer.dataset.active = "true";
+    applyTheme();
+    fallbackTimer = window.setTimeout(finishTransition, 2300);
+  };
 
   return (
     <>
@@ -300,6 +303,7 @@ export const ThemeToggle = ({ theme, setTheme }: ThemeToggleProps) => {
         onClick={handleClick}
         className="theme-toggle"
         aria-label={`Switch to ${nextTheme} mode`}
+        aria-pressed={isDark}
         title={`Switch to ${nextTheme} mode`}
       >
         <span
@@ -307,30 +311,10 @@ export const ThemeToggle = ({ theme, setTheme }: ThemeToggleProps) => {
           className="theme-toggle-icon-shell"
           aria-hidden="true"
         >
-          <svg
-            ref={iconRef}
-            className="theme-toggle-icon"
-            viewBox="0 0 24 24"
-            fill="none"
-            focusable="false"
-          >
-            <path
-              ref={iconCoreRef}
-              d={initialCorePath}
-              className="theme-toggle-icon-line theme-toggle-icon-core"
-              style={{ strokeWidth: initialStrokeWidth }}
-            />
-            {initialRayPaths.map((path, index) => (
-              <path
-                key={index}
-                ref={(node) => {
-                  iconRayRefs.current[index] = node;
-                }}
-                d={path}
-                className="theme-toggle-icon-line theme-toggle-icon-ray"
-              />
-            ))}
-          </svg>
+          <ThemeIcon
+            isDark={isDark}
+            shouldReduceMotion={shouldReduceMotion}
+          />
         </span>
       </button>
       {createPortal(
@@ -340,31 +324,19 @@ export const ThemeToggle = ({ theme, setTheme }: ThemeToggleProps) => {
           popover="manual"
           aria-hidden="true"
         >
-          <svg
-            ref={overlaySvgRef}
-            className="theme-toggle-icon"
-            viewBox="0 0 24 24"
-            fill="none"
-            focusable="false"
-          >
-            <path
-              ref={overlayCoreRef}
-              d={initialCorePath}
-              className="theme-toggle-icon-line theme-toggle-icon-core"
-              style={{ strokeWidth: initialStrokeWidth }}
-            />
-            {initialRayPaths.map((path, index) => (
-              <path
-                key={index}
-                ref={(node) => {
-                  overlayRayRefs.current[index] = node;
-                }}
-                d={path}
-                className="theme-toggle-icon-line theme-toggle-icon-ray"
-              />
-            ))}
-          </svg>
+          <ThemeIcon
+            isDark={isDark}
+            shouldReduceMotion={shouldReduceMotion}
+          />
         </span>,
+        document.body
+      )}
+      {createPortal(
+        <div
+          ref={liveLayerRef}
+          className="theme-live-page-layer"
+          aria-hidden="true"
+        />,
         document.body
       )}
     </>

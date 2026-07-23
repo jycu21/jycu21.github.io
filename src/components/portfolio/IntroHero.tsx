@@ -90,6 +90,31 @@ const randomFontAfter = (current: FontClass): FontClass => {
 const isSpaceOperation = (operation: IntroOperation | undefined): boolean =>
   operation?.kind === "character" && operation.character === " ";
 
+const IntroItems = ({ displayedIntro }: { displayedIntro: DisplayedIntro }) => (
+  <span aria-hidden="true" className="block w-full">
+    {displayedIntro.items.map((item, index) => (
+      <React.Fragment key={index}>
+        {item.kind === "coffee" ? (
+          <span className="typewriter-coffee">
+            <img src="/coffee1.png" alt="" />
+          </span>
+        ) : item.kind === "code" ? (
+          <span className="inline-block whitespace-nowrap">
+            <span className={item.font}>{`{${item.characters}`}</span>
+            <span className="typewriter-cursor" />
+            <span className={item.font}>{"}"}</span>
+          </span>
+        ) : (
+          <span className={item.font}>{item.character}</span>
+        )}
+      </React.Fragment>
+    ))}
+    {!displayedIntro.items.some((item) => item.kind === "code") && (
+      <span className="typewriter-cursor" />
+    )}
+  </span>
+);
+
 export const IntroHero = () => {
   const [displayedIntro, setDisplayedIntro] = useState<DisplayedIntro>(() => ({
     label: INTRO_PHRASES[0].label,
@@ -160,31 +185,11 @@ export const IntroHero = () => {
   return (
     <section className="hero-viewport flex bg-[#F6FDFC] px-5 text-center sm:px-8">
       <h1
+        data-live-sync="intro"
         aria-label={displayedIntro.label}
         className="typewriter-line flex h-full w-full items-center text-[clamp(3rem,8vw,9rem)] font-normal leading-[0.92] tracking-[-0.055em]"
       >
-        <span aria-hidden="true" className="block w-full">
-          {displayedIntro.items.map((item, index) => (
-            <React.Fragment key={index}>
-              {item.kind === "coffee" ? (
-                <span className="typewriter-coffee">
-                  <img src="/coffee1.png" alt="" />
-                </span>
-              ) : item.kind === "code" ? (
-                <span className="inline-block whitespace-nowrap">
-                  <span className={item.font}>{`{${item.characters}`}</span>
-                  <span className="typewriter-cursor" />
-                  <span className={item.font}>{"}"}</span>
-                </span>
-              ) : (
-                <span className={item.font}>{item.character}</span>
-              )}
-            </React.Fragment>
-          ))}
-          {!displayedIntro.items.some((item) => item.kind === "code") && (
-            <span className="typewriter-cursor" />
-          )}
-        </span>
+        <IntroItems displayedIntro={displayedIntro} />
       </h1>
     </section>
   );

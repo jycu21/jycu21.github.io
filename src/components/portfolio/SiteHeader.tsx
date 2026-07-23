@@ -23,7 +23,11 @@ const KualaLumpurClock = () => {
     return () => window.clearInterval(timer);
   }, []);
 
-  return <span>Kuala Lumpur {KUALA_LUMPUR_TIME.format(time)}</span>;
+  return (
+    <span data-live-sync="kuala-lumpur-clock">
+      Kuala Lumpur {KUALA_LUMPUR_TIME.format(time)}
+    </span>
+  );
 };
 
 interface SiteHeaderProps {
